@@ -1,9 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:http/http.dart' as http;
+import '../config/config.dart';
+import '../model/request/response/user_resgister_post_req.dart';
+
+
 class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
@@ -26,19 +33,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _register() {
+  Future<void> _register() async {
     if (_formKey.currentState!.validate()) {
-      // TODO: นำข้อมูลส่งไปยัง Node.js Backend API เพื่อสร้างบัญชีใหม่
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ", style: GoogleFonts.prompt()),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.pop(context); // เด้งกลับไปหน้า Login
+      try {
+        // 1. ดึง URL จากไฟล์ config.json
+        final config = await Configuration.getConfig();
+        final apiEndpoint = config['apiEndpoint'];
+
+        // 2. นำข้อมูลจาก TextController มาใส่ใน Model
+        UserResgisterPostReq reqData = UserResgisterPostReq(
+          uName: _nameController.text,
+          uEmail: _emailController.text,
+          uPassword: _passwordController.text,
+          uProfile: "https://cdn-icons-png.flaticon.com/512/3135/3135768.png", // ใส่รูป Default ไปก่อน
+        );
+
+        // 3. ยิง API โดยใช้ฟังก์ชันแปลง Model เป็น JSON String
+        final response = await http.post(
+          Uri.parse("$apiEndpoint/add"),
+          headers: {"Content-Type": "application/json"},
+          body: userResgisterPostReqToJson(reqData), // ใช้ Model แทน jsonEncode({...})
+        );
+
+        final result = jsonDecode(response.body);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ", style: GoogleFonts.prompt()),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context); // เด้งกลับไปหน้า Login
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['error'] ?? "เกิดข้อผิดพลาดในการสมัครสมาชิก", style: GoogleFonts.prompt()),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้: $error", style: GoogleFonts.prompt()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -103,7 +147,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     toggleVisibility: () => setState(() => isPasswordHidden = !isPasswordHidden),
                     validator: (value) {
                       if (value!.isEmpty) return "กรุณากรอกรหัสผ่าน";
-                      if (value.length < 6) return "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+                      if (value.length < 1) return "รหัสผ่านต้องมีอย่างน้อย 1 ตัวอักษร";
                       return null;
                     },
                   ),
