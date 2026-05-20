@@ -1,7 +1,17 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+
+import '../../config/config.dart';
+import '../../service/auth_service.dart';
+import '../../model/request/admin_add_user_post_req.dart';
 
 class AdminAddUserScreen extends StatefulWidget {
+  const AdminAddUserScreen({super.key});
+
   @override
   _AdminAddUserScreenState createState() => _AdminAddUserScreenState();
 }
@@ -10,17 +20,135 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen> {
   final _formKey = GlobalKey<FormState>();
   
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController(); // เพิ่ม Controller สำหรับอีเมล
   final TextEditingController _passwordController = TextEditingController();
   
-  String selectedRole = "user"; // ค่าเริ่มต้นเป็น user
+  String selectedRole = "user"; 
   final List<String> roles = ["user", "admin"];
   bool isPasswordHidden = true;
+  bool _isLoading = false; // ตัวแปรสถานะกำลังโหลด
+
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void dispose() {
     _nameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  // ==========================================
+  // 1. ฟังก์ชันเลือกรูปภาพจากแกลเลอรี
+  // ==========================================
+  Future<void> _pickImage() async {
+    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  // ==========================================
+  // 2. ฟังก์ชันอัปโหลดรูปภาพไปยัง Node.js
+  // ==========================================
+  Future<String?> _uploadImageToBackend(File imageFile) async {
+    try {
+      final config = await Configuration.getConfig();
+      final apiEndpoint = config['apiEndpoint'];
+      final String? token = await AuthService.getToken();
+
+      final url = Uri.parse("$apiEndpoint/images/upload-image"); 
+      final request = http.MultipartRequest('POST', url);
+      
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+
+      request.files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+
+      final response = await request.send();
+      final responseData = await response.stream.bytesToString(); 
+      final jsonMap = jsonDecode(responseData);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonMap['urls']['original']; 
+      } else {
+        return null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ==========================================
+  // 3. ฟังก์ชันบันทึกข้อมูลผู้ใช้
+  // ==========================================
+  Future<void> _saveUser() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      String profileUrl = "-"; 
+
+      // ถ้ามีการเลือกรูป ให้ส่งไปอัปโหลดก่อน
+      if (_selectedImage != null) {
+        final uploadedUrl = await _uploadImageToBackend(_selectedImage!);
+        if (uploadedUrl != null) {
+          profileUrl = uploadedUrl;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("อัปโหลดรูปภาพไม่สำเร็จ", style: GoogleFonts.prompt()), backgroundColor: Colors.red),
+          );
+          setState(() => _isLoading = false);
+          return; 
+        }
+      }
+
+      // นำข้อมูลมาใส่ Model
+      AdminAddUserPostReq reqData = AdminAddUserPostReq(
+        uName: _nameController.text.trim(),
+        uEmail: _emailController.text.trim(),
+        uPassword: _passwordController.text.trim(),
+        uProfile: profileUrl, 
+        uRole: selectedRole,
+      );
+
+      final config = await Configuration.getConfig();
+      final apiEndpoint = config['apiEndpoint'];
+      final String? token = await AuthService.getToken();
+
+      final response = await http.post(
+        Uri.parse("$apiEndpoint/add-user"),
+        headers: {
+          "Content-Type": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+        body: adminAddUserPostReqToJson(reqData), 
+      );
+
+      final result = jsonDecode(response.body);
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("สร้างบัญชีผู้ใช้งานสำเร็จ", style: GoogleFonts.prompt()), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context); // ปิดหน้าต่าง
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['error'] ?? "ไม่สามารถเพิ่มผู้ใช้งานได้", style: GoogleFonts.prompt()), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", style: GoogleFonts.prompt()), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -46,7 +174,7 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. ส่วนเลือกรูปโปรไฟล์ (จำลอง)
+              // 1. ส่วนเลือกรูปโปรไฟล์
               Center(
                 child: Stack(
                   alignment: Alignment.bottomRight,
@@ -58,13 +186,17 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen> {
                         color: const Color(0xFFE0F7FA),
                         shape: BoxShape.circle,
                         border: Border.all(color: const Color(0xFF1976D2), width: 2),
+                        // นำรูปที่เลือกมาแสดงผล
+                        image: _selectedImage != null
+                            ? DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover)
+                            : null,
                       ),
-                      child: const Icon(Icons.person, size: 65, color: Color(0xFF00ACC1)),
+                      child: _selectedImage == null 
+                          ? const Icon(Icons.person, size: 65, color: Color(0xFF00ACC1))
+                          : null,
                     ),
                     GestureDetector(
-                      onTap: () {
-                        // TODO: เชื่อมต่อ Image Picker เพื่อเลือกรูปโปรไฟล์และส่งไป Cloudinary
-                      },
+                      onTap: _pickImage, // เรียกฟังก์ชันเลือกรูป
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: const BoxDecoration(
@@ -85,6 +217,20 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen> {
                 controller: _nameController,
                 validator: (value) => value!.isEmpty ? 'กรุณากรอกชื่อ-นามสกุล' : null,
                 decoration: _buildInputDecoration("ตัวอย่าง: สมชาย ใจดี", Icons.person),
+              ),
+              const SizedBox(height: 20),
+
+              // ⭐️ เพิ่มช่องกรอกอีเมลตรงนี้
+              _buildLabel("อีเมล"),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'กรุณากรอกอีเมล';
+                  if (!value.contains('@')) return 'รูปแบบอีเมลไม่ถูกต้อง';
+                  return null;
+                },
+                decoration: _buildInputDecoration("ตัวอย่าง: somchai@email.com", Icons.email),
               ),
               const SizedBox(height: 20),
 
@@ -151,22 +297,16 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen> {
                 height: 55,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0D47A1), // Navy Blue
+                    backgroundColor: const Color(0xFF0D47A1), 
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      // TODO: ดึงค่าจาก Controller ส่งไปยัง Node.js Backend API เพื่อบันทึกลงฐานข้อมูล MySQL
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("สร้างบัญชีผู้ใช้งานสำเร็จ", style: GoogleFonts.prompt())),
-                      );
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: Text(
-                    "สร้างบัญชีผู้ใช้งาน",
-                    style: GoogleFonts.prompt(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
+                  onPressed: _isLoading ? null : _saveUser, // เรียกใช้ฟังก์ชันบันทึก
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(
+                          "สร้างบัญชีผู้ใช้งาน",
+                          style: GoogleFonts.prompt(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ],
