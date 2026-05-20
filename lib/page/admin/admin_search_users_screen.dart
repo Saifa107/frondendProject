@@ -1,8 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+
+// Import ไฟล์ที่จำเป็นสำหรับการเชื่อมต่อ API (แก้ไข Path ให้ตรงกับโฟลเดอร์ของคุณ)
+import '../../config/config.dart';
+import '../../service/auth_service.dart';
+
 import 'admin_add_user_screen.dart';
+import 'admin_edit_user_screen.dart'; // อย่าลืมสร้างไฟล์นี้ตามโค้ดด้านล่าง
 
 class AdminSearchUsersScreen extends StatefulWidget {
   const AdminSearchUsersScreen({super.key});
@@ -13,36 +21,84 @@ class AdminSearchUsersScreen extends StatefulWidget {
 class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
   String searchQuery = "";
   String selectedRole = "ทั้งหมด";
+  bool isLoading = true; // เพิ่มตัวแปรสำหรับโหลด
 
   final List<String> roles = ["ทั้งหมด", "user", "admin"];
+  List<Map<String, dynamic>> allUsers = []; // เปลี่ยนเป็นข้อมูลว่างรอรับจาก API
 
-  // ข้อมูลจำลองผู้ใช้งาน (อ้างอิงจาก model/user_model.ts)
-  List<Map<String, dynamic>> allUsers = [
-    {
-      "uid": 1,
-      "u_name": "สมชาย ใจดี (User)",
-      "u_profile": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-      "u_role": "user"
-    },
-    {
-      "uid": 2,
-      "u_name": "ผู้ดูแลระบบ หลัก",
-      "u_profile": "https://cdn-icons-png.flaticon.com/512/3135/3135768.png",
-      "u_role": "admin"
-    },
-    {
-      "uid": 3,
-      "u_name": "สมหญิง รักทำอาหาร",
-      "u_profile": "https://cdn-icons-png.flaticon.com/512/4140/4140048.png",
-      "u_role": "user"
-    },
-    {
-      "uid": 4,
-      "u_name": "จอห์น โด (ทดสอบ)",
-      "u_profile": "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-      "u_role": "user"
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchUsers(); // โหลดข้อมูลทันทีที่เปิดหน้านี้
+  }
+
+  // ==========================================
+  // 1. API: ดึงข้อมูลผู้ใช้งานทั้งหมด
+  // ==========================================
+  Future<void> _fetchUsers() async {
+    setState(() => isLoading = true);
+    try {
+      final config = await Configuration.getConfig();
+      final apiEndpoint = config['apiEndpoint'];
+      final String? token = await AuthService.getToken(); // ดึง Token
+
+      final response = await http.get(
+        Uri.parse("$apiEndpoint/users"),
+        headers: {
+          "Content-Type": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          allUsers = List<Map<String, dynamic>>.from(data);
+          isLoading = false;
+        });
+      } else {
+        _showSnackBar("ดึงข้อมูลล้มเหลว (Status: ${response.statusCode})", Colors.red);
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      _showSnackBar("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", Colors.red);
+      setState(() => isLoading = false);
+    }
+  }
+
+  // ==========================================
+  // 2. API: ลบผู้ใช้งาน
+  // ==========================================
+  Future<void> _deleteUserAPI(int uid) async {
+    try {
+      final config = await Configuration.getConfig();
+      final apiEndpoint = config['apiEndpoint'];
+      final String? token = await AuthService.getToken();
+
+      final response = await http.delete(
+        Uri.parse("$apiEndpoint/delete/$uid"), // ⚠️ แก้ไขเส้น API ให้ตรงกับ Backend
+        headers: {
+          "Content-Type": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        _showSnackBar("ลบบัญชีผู้ใช้งานสำเร็จ", Colors.green);
+        _fetchUsers(); // รีเฟรชข้อมูลใหม่หลังจากลบ
+      } else {
+        _showSnackBar("ไม่สามารถลบผู้ใช้งานได้", Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", Colors.red);
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message, style: GoogleFonts.prompt()), backgroundColor: color),
+    );
+  }
 
   // ฟังก์ชันแสดงหน้าต่างยืนยันการลบผู้ใช้
   void _confirmDeleteUser(int index, Map<String, dynamic> user) {
@@ -63,13 +119,8 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
-              setState(() {
-                allUsers.removeWhere((element) => element['uid'] == user['uid']);
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("ลบบัญชีผู้ใช้งานสำเร็จ", style: GoogleFonts.prompt())),
-              );
+              Navigator.pop(context); // ปิด Dialog ก่อน
+              _deleteUserAPI(user['uid']); // เรียกฟังก์ชันลบผ่าน API
             },
             child: Text("ลบบัญชี", style: GoogleFonts.prompt(color: Colors.white)),
           ),
@@ -82,8 +133,8 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
   Widget build(BuildContext context) {
     // กรองข้อมูลตามการค้นหาและสิทธิ์
     List<Map<String, dynamic>> filteredUsers = allUsers.where((user) {
-      bool matchesSearch = user['u_name'].toString().toLowerCase().contains(searchQuery.toLowerCase());
-      bool matchesRole = selectedRole == "ทั้งหมด" || user['u_role'] == selectedRole;
+      bool matchesSearch = (user['u_name'] ?? '').toString().toLowerCase().contains(searchQuery.toLowerCase());
+      bool matchesRole = selectedRole == "ทั้งหมด" || (user['u_role'] ?? 'user') == selectedRole;
       return matchesSearch && matchesRole;
     }).toList();
 
@@ -100,19 +151,21 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.person_add_alt_1, color: Color(0xFF00ACC1), size: 28),
-            onPressed: () {
-              // TODO: เปิดหน้าต่างเพิ่มผู้ใช้ใหม่
-              // --- [แก้ไขโค้ดตรงนี้เพื่อนำทางไปหน้าเพิ่มผู้ใช้งาน] ---
-              Navigator.push(
+            onPressed: () async {
+              // รอให้หน้าต่างเพิ่มผู้ใช้ปิดลง แล้วสั่งโหลดข้อมูลใหม่
+              await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => AdminAddUserScreen()),
               );
+              _fetchUsers(); 
             },
           ),
           const SizedBox(width: 10),
         ],
       ),
-      body: Column(
+      body: isLoading 
+        ? const Center(child: CircularProgressIndicator()) // แสดงวงกลมโหลดตอนดึง API
+        : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
@@ -198,7 +251,7 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
                                 backgroundColor: const Color(0xFFFE4A49),
                                 foregroundColor: Colors.white,
                                 icon: Icons.delete,
-                                label: 'ลบผู้ใช้',
+                                label: 'ลบ',
                                 borderRadius: const BorderRadius.only(topRight: Radius.circular(15), bottomRight: Radius.circular(15)),
                               ),
                             ],
@@ -217,6 +270,9 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
   // Widget สร้างการ์ดผู้ใช้งาน
   Widget _buildUserCard(Map<String, dynamic> user) {
     bool isAdmin = user['u_role'] == 'admin';
+    String profileUrl = (user['u_profile'] != null && user['u_profile'] != "-" && user['u_profile'].toString().isNotEmpty) 
+        ? user['u_profile'] 
+        : "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
 
     return Container(
       decoration: BoxDecoration(
@@ -228,8 +284,13 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-        onTap: () {
-          // TODO: เปิดหน้ารายละเอียดเพื่อแก้ไขข้อมูลผู้ใช้คนนี้
+        onTap: () async {
+          // กดเพื่อเปิดหน้าต่างแก้ไข และรอให้แก้ไขเสร็จเพื่อโหลดข้อมูลใหม่
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => AdminEditUserScreen(userData: user)),
+          );
+          _fetchUsers();
         },
         leading: Container(
           width: 55,
@@ -240,7 +301,7 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
           ),
           child: ClipOval(
             child: CachedNetworkImage(
-              imageUrl: user['u_profile'],
+              imageUrl: profileUrl,
               fit: BoxFit.cover,
               placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
               errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
@@ -248,7 +309,7 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
           ),
         ),
         title: Text(
-          user['u_name'],
+          user['u_name'] ?? 'ไม่ระบุชื่อ',
           style: GoogleFonts.prompt(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF0D47A1)),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -264,7 +325,7 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  user['u_role'].toString().toUpperCase(),
+                  (user['u_role'] ?? 'user').toString().toUpperCase(),
                   style: GoogleFonts.prompt(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,

@@ -11,6 +11,7 @@ import '../model/request/user_login_post_req.dart';
 import '../nav/main_navigation.dart';
 import '../nav/admin_main_navigation.dart';
 import '../page/register_screen.dart';
+import '../service/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -67,7 +68,12 @@ class _LoginScreenState extends State<LoginScreen> {
         final result = jsonDecode(response.body);
 
         if (response.statusCode == 200) {
+
+          final String token = result['token'];
           final String role = result['user']?['u_role'] ?? 'user';
+
+          //  เรียก Service ให้บันทึกข้อมูลลงเครื่องมือถือ
+          await AuthService.saveLoginData(token, role);
 
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
