@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:http/http.dart' as http;
 import '../config/config.dart';
-import '../model/request/response/user_resgister_post_req.dart';
+import '../model/request/user_resgister_post_req.dart';
 
 
 class RegisterScreen extends StatefulWidget {

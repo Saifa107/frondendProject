@@ -1,6 +1,13 @@
-
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
+
+// Import ส่วนของ Config และ Model
+import '../config/config.dart';
+import '../model/request/user_login_post_req.dart';
+
+// Import หน้าปลายทางต่างๆ
 import '../nav/main_navigation.dart';
 import '../nav/admin_main_navigation.dart';
 import '../page/register_screen.dart';
@@ -13,9 +20,112 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
-  bool isLoginMode = true; // ใช้สลับระหว่าง Login / Signup
   bool isPasswordHidden = true;
+  bool isLoading = false; 
+
+  Future<void> _login() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        isLoading = true; 
+      });
+
+      try {
+        final config = await Configuration.getConfig();
+        final apiEndpoint = config['apiEndpoint'];
+
+        UserLoginPostReq reqData = UserLoginPostReq(
+          username: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        // ==========================================
+        // 🐛 DEBUG CONSOLE: ดูข้อมูลก่อนส่ง (Request)
+        // ==========================================
+        print("====== [ API REQUEST: LOGIN ] ======");
+        print("URL: $apiEndpoint/login");
+        print("Body ที่ส่งไป: ${userLoginPostReqToJson(reqData)}");
+        print("====================================");
+
+        final response = await http.post(
+          Uri.parse("$apiEndpoint/login"),
+          headers: {"Content-Type": "application/json"},
+          body: userLoginPostReqToJson(reqData),
+        );
+
+        // ==========================================
+        // 🐛 DEBUG CONSOLE: ดูข้อมูลที่รับกลับมา (Response)
+        // ==========================================
+        print("====== [ API RESPONSE: LOGIN ] ======");
+        print("Status Code: ${response.statusCode}");
+        print("Body ที่ตอบกลับ: ${response.body}");
+        print("=====================================");
+
+        final result = jsonDecode(response.body);
+
+        if (response.statusCode == 200) {
+          final String role = result['user']?['u_role'] ?? 'user';
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("เข้าสู่ระบบสำเร็จ", style: GoogleFonts.prompt()),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          if (role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminMainNavigation()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const MainNavigation()),
+            );
+          }
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['error'] ?? "อีเมลหรือรหัสผ่านไม่ถูกต้อง", style: GoogleFonts.prompt()),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (error) {
+        // ==========================================
+        // 🐛 DEBUG CONSOLE: ดูข้อผิดพลาด (Error Catch)
+        // ==========================================
+        print("====== [ API ERROR: LOGIN ] ======");
+        print("Error Details: $error");
+        print("==================================");
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้: $error", style: GoogleFonts.prompt()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } finally {
+        setState(() {
+          isLoading = false; 
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,108 +134,119 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Text(
-                isLoginMode ? "ยินดีต้อนรับกลับมา!" : "สร้างบัญชีใหม่",
-                style: GoogleFonts.prompt(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0D47A1), // Navy Blue
+          child: Form(
+            key: _formKey, 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "ยินดีต้อนรับกลับมา!",
+                  style: GoogleFonts.prompt(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF0D47A1), 
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                isLoginMode 
-                  ? "เข้าสู่ระบบเพื่อค้นหาเมนูอร่อยจากวัตถุดิบของคุณ" 
-                  : "สมัครสมาชิกเพื่อเริ่มต้นจัดการคลังวัตถุดิบ",
-                style: GoogleFonts.prompt(fontSize: 16, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 40),
+                const SizedBox(height: 10),
+                Text(
+                  "เข้าสู่ระบบเพื่อค้นหาเมนูอร่อยจากวัตถุดิบของคุณ",
+                  style: GoogleFonts.prompt(fontSize: 16, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 40),
 
-              // ฟอร์มกรอกข้อมูล
-              if (!isLoginMode) ...[
-                _buildTextField("ชื่อ-นามสกุล", Icons.person),
+                _buildTextField(
+                  "อีเมล",
+                  Icons.email,
+                  controller: _emailController,
+                  validator: (value) => value!.isEmpty ? 'กรุณากรอกอีเมล' : null,
+                ),
                 const SizedBox(height: 20),
-              ],
-              _buildTextField("อีเมล", Icons.email),
-              const SizedBox(height: 20),
-              _buildTextField("รหัสผ่าน", Icons.lock, isPassword: true),
-              const SizedBox(height: 30),
+                _buildTextField(
+                  "รหัสผ่าน",
+                  Icons.lock,
+                  isPassword: true,
+                  controller: _passwordController,
+                  validator: (value) => value!.isEmpty ? 'กรุณากรอกรหัสผ่าน' : null,
+                ),
+                const SizedBox(height: 30),
 
-              // ปุ่ม Login / Signup
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1976D2), // Blue
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1976D2), 
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                  ),
-                  onPressed: () {
-                    // TODO: นำข้อมูลไปเช็คกับ Backend Node.js
-                    // ถ้าสำเร็จให้ย้ายไปหน้า MainNavigation
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => MainNavigation()),
-                    );
-                  },
-                  child: Text(
-                    isLoginMode ? "เข้าสู่ระบบ" : "สมัครสมาชิก",
-                    style: GoogleFonts.prompt(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                    onPressed: isLoading ? null : _login, 
+                    child: isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text(
+                            "เข้าสู่ระบบ",
+                            style: GoogleFonts.prompt(
+                                fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // สลับโหมด
-              Row(
-  mainAxisAlignment: MainAxisAlignment.center,
-  children: [
-    Text(
-      "ยังไม่มีบัญชีใช่ไหม? ",
-      style: GoogleFonts.prompt(color: Colors.grey[600], fontSize: 15),
-    ),
-    GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => RegisterScreen()),
-        );
-      },
-      child: Text(
-        "สมัครสมาชิก",
-        style: GoogleFonts.prompt(
-          color: const Color(0xFF00ACC1),
-          fontSize: 15,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
-  ],
-),
-            ],
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "ยังไม่มีบัญชีใช่ไหม? ",
+                      style: GoogleFonts.prompt(color: Colors.grey[600], fontSize: 15),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                        );
+                      },
+                      child: Text(
+                        "สมัครสมาชิก",
+                        style: GoogleFonts.prompt(
+                          color: const Color(0xFF00ACC1),
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTextField(String hint, IconData icon, {bool isPassword = false}) {
-    return TextField(
+  Widget _buildTextField(
+    String hint,
+    IconData icon, {
+    bool isPassword = false,
+    required TextEditingController controller,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField( 
+      controller: controller,
       obscureText: isPassword && isPasswordHidden,
+      validator: validator,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: GoogleFonts.prompt(color: Colors.grey[400]),
         prefixIcon: Icon(icon, color: const Color(0xFF1976D2)),
         suffixIcon: isPassword
             ? IconButton(
-                icon: Icon(isPasswordHidden ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
-                onPressed: () => setState(() => isPasswordHidden = !isPasswordHidden),
+                icon: Icon(
+                    isPasswordHidden ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.grey),
+                onPressed: () =>
+                    setState(() => isPasswordHidden = !isPasswordHidden),
               )
             : null,
         filled: true,
