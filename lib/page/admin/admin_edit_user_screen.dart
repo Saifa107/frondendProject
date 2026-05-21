@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../config/config.dart';
 import '../../service/auth_service.dart';
+import '../../model/request/admin_update_user_req.dart';
 
 class AdminEditUserScreen extends StatefulWidget {
   final Map<String, dynamic> userData; // รับข้อมูลเดิมมาจากหน้าค้นหา
@@ -140,7 +141,7 @@ class _AdminEditUserScreenState extends State<AdminEditUserScreen> {
 
       // ถ้ามีการเลือกรูปใหม่
       if (_selectedImage != null) {
-        // 4.1 สั่งลบรูปเดิมทิ้งก่อน (ให้ทำงานเบื้องหลังไปเลย ไม่ต้องบังคับรอ)
+        // 4.1 สั่งลบรูปเดิมทิ้งก่อน
         _deleteOldImage(_currentProfileUrl);
 
         // 4.2 อัปโหลดรูปใหม่ขึ้นไป
@@ -148,7 +149,9 @@ class _AdminEditUserScreenState extends State<AdminEditUserScreen> {
         if (uploadedUrl != null) {
           finalProfileUrl = uploadedUrl;
         } else {
-          _showSnackBar("อัปโหลดรูปภาพใหม่ไม่สำเร็จ", Colors.red);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("อัปโหลดรูปภาพใหม่ไม่สำเร็จ", style: GoogleFonts.prompt()), backgroundColor: Colors.red),
+          );
           setState(() => _isLoading = false);
           return; 
         }
@@ -159,38 +162,41 @@ class _AdminEditUserScreenState extends State<AdminEditUserScreen> {
       final String? token = await AuthService.getToken();
       final uid = widget.userData['uid'];
 
-      // ข้อมูลที่เตรียมส่งไปอัปเดต
-      Map<String, dynamic> updateData = {
-        "u_name": _nameController.text.trim(),
-        "u_email": _emailController.text.trim(),
-        "u_profile": finalProfileUrl,
-        "u_role": selectedRole,
-      };
+      // ⭐️ เปลี่ยนมาใช้ Model ในการจัดเตรียมข้อมูล
+      AdminUpdateUserReq reqData = AdminUpdateUserReq(
+        uName: _nameController.text.trim(),
+        uEmail: _emailController.text.trim(),
+        uProfile: finalProfileUrl,
+        uRole: selectedRole,
+        // เช็คว่าถ้าช่องรหัสผ่านไม่ว่าง ให้ดึงข้อความมา แต่ถ้าว่างให้ส่งเป็น null
+        uPassword: _passwordController.text.isNotEmpty ? _passwordController.text.trim() : null,
+      );
 
-      // ถ้าผู้ใช้พิมพ์รหัสผ่านใหม่ ค่อยแนบไปอัปเดตด้วย
-      if (_passwordController.text.isNotEmpty) {
-        updateData["u_password"] = _passwordController.text.trim();
-      }
-
-      // ⚠️ ต้องแก้ไข Endpoint เป็นเส้น API สำหรับอัปเดตผู้ใช้ของคุณ (เช่น /update-user/:id)
       final response = await http.put(
         Uri.parse("$apiEndpoint/update/$uid"), 
         headers: {
           "Content-Type": "application/json",
           if (token != null) "Authorization": "Bearer $token",
         },
-        body: jsonEncode(updateData), 
+        // ⭐️ แปลง Model เป็น JSON String ผ่านฟังก์ชัน
+        body: adminUpdateUserReqToJson(reqData), 
       );
 
       if (response.statusCode == 200) {
-        _showSnackBar("อัปเดตข้อมูลผู้ใช้งานสำเร็จ", Colors.green);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("อัปเดตข้อมูลผู้ใช้งานสำเร็จ", style: GoogleFonts.prompt()), backgroundColor: Colors.green),
+        );
         Navigator.pop(context); // ปิดหน้าต่างกลับไปหน้ารายชื่อ
       } else {
         final result = jsonDecode(response.body);
-        _showSnackBar(result['error'] ?? "ไม่สามารถอัปเดตข้อมูลได้", Colors.red);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['error'] ?? "ไม่สามารถอัปเดตข้อมูลได้", style: GoogleFonts.prompt()), backgroundColor: Colors.red),
+        );
       }
     } catch (e) {
-      _showSnackBar("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", Colors.red);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", style: GoogleFonts.prompt()), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

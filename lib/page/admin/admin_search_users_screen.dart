@@ -23,6 +23,7 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
   String selectedRole = "ทั้งหมด";
   bool isLoading = true; // เพิ่มตัวแปรสำหรับโหลด
 
+  final TextEditingController _searchController = TextEditingController();
   final List<String> roles = ["ทั้งหมด", "user", "admin"];
   List<Map<String, dynamic>> allUsers = []; // เปลี่ยนเป็นข้อมูลว่างรอรับจาก API
 
@@ -181,6 +182,7 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: TextField(
+              controller: _searchController,
               onChanged: (value) => setState(() => searchQuery = value),
               decoration: InputDecoration(
                 hintText: "ค้นหาด้วยชื่อผู้ใช้งาน...",
@@ -290,6 +292,14 @@ class _AdminSearchUsersScreenState extends State<AdminSearchUsersScreen> {
             context,
             MaterialPageRoute(builder: (context) => AdminEditUserScreen(userData: user)),
           );
+
+          //เมื่อกลับมาหน้านี้ ให้ล้างคำค้นหาทิ้ง เพื่อให้โชว์รายชื่อทั้งหมด
+          setState(() {
+            _searchController.clear();
+            searchQuery = ""; 
+          });
+
+          //สั่งให้ดึงข้อมูลจาก Database ใหม่อีกครั้งเพื่ออัปเดต UI
           _fetchUsers();
         },
         leading: Container(
