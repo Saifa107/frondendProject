@@ -138,12 +138,12 @@ class _AdminSearchIngredientsScreenState extends State<AdminSearchIngredientsScr
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         // --- [ส่วนที่เพิ่มเข้ามาใหม่: ให้กดแล้วไปหน้ารายละเอียด] ---
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => IngredientDetailScreen(ingredient: item),
-            ),
-          );
+          // Navigator.push(
+          //   context,
+          //   MaterialPageRoute(
+          //     builder: (context) => IngredientDetailScreen(ingredient: item),
+          //   ),
+          // );
         },
         leading: Container(
           width: 55,

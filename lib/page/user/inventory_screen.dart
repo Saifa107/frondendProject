@@ -217,12 +217,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         // แก้ไขส่วนนี้: เมื่อคลิกที่รายการ
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => IngredientDetailScreen(ingredient: item),
-            ),
-          );
+          // Navigator.push(
+          //   context,
+          //   MaterialPageRoute(
+          //     builder: (context) => IngredientDetailScreen(ingredient: item),
+          //   ),
+          // );
         },
         leading: Container(
           width: 60,

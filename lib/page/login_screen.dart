@@ -41,29 +41,13 @@ class _LoginScreenState extends State<LoginScreen> {
         UserLoginPostReq reqData = UserLoginPostReq(
           username: _emailController.text.trim(),
           password: _passwordController.text.trim(),
-        );
-
-        // ==========================================
-        // 🐛 DEBUG CONSOLE: ดูข้อมูลก่อนส่ง (Request)
-        // ==========================================
-        print("====== [ API REQUEST: LOGIN ] ======");
-        print("URL: $apiEndpoint/login");
-        print("Body ที่ส่งไป: ${userLoginPostReqToJson(reqData)}");
-        print("====================================");
+        ); 
 
         final response = await http.post(
           Uri.parse("$apiEndpoint/login"),
           headers: {"Content-Type": "application/json"},
           body: userLoginPostReqToJson(reqData),
         );
-
-        // ==========================================
-        // 🐛 DEBUG CONSOLE: ดูข้อมูลที่รับกลับมา (Response)
-        // ==========================================
-        print("====== [ API RESPONSE: LOGIN ] ======");
-        print("Status Code: ${response.statusCode}");
-        print("Body ที่ตอบกลับ: ${response.body}");
-        print("=====================================");
 
         final result = jsonDecode(response.body);
 
@@ -104,12 +88,6 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } catch (error) {
-        // ==========================================
-        // 🐛 DEBUG CONSOLE: ดูข้อผิดพลาด (Error Catch)
-        // ==========================================
-        print("====== [ API ERROR: LOGIN ] ======");
-        print("Error Details: $error");
-        print("==================================");
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
