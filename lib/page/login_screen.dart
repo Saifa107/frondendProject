@@ -4,11 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-// Import ส่วนของ Config และ Model
 import '../config/config.dart';
 import '../model/request/user_login_post_req.dart';
-
-// Import หน้าปลายทางต่างๆ
 import '../nav/main_navigation.dart';
 import '../nav/admin_main_navigation.dart';
 import '../page/register_screen.dart';
@@ -27,12 +24,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool isPasswordHidden = true;
   bool isLoading = false;
+  bool isGoogleLoading = false; // ✅ loading แยกสำหรับ Google
 
+  // ✅ สร้าง GoogleSignIn instance
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+    clientId: '221645289676-hkitnvhjh3g8hspso7tbcmv860k8q59q.apps.googleusercontent.com',
+  );
+
+  // ==========================================
+  // ฟังก์ชัน Login ปกติ (โค้ดเดิม)
+  // ==========================================
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        isLoading = true;
-      });
+      setState(() => isLoading = true);
       try {
         final config = await Configuration.getConfig();
         final apiEndpoint = config['apiEndpoint'];
@@ -53,31 +58,25 @@ class _LoginScreenState extends State<LoginScreen> {
           final String token = result['token'];
           final String role = result['user']?['u_role'] ?? 'user';
 
-          //  เรียก Service ให้บันทึกข้อมูลลงเครื่องมือถือ
           await AuthService.saveLoginData(token, role);
           if (!mounted) return;
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("เข้าสู่ระบบสำเร็จ", style: GoogleFonts.prompt()),
               backgroundColor: Colors.green,
             ),
           );
-          if (role == 'admin') {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const AdminMainNavigation()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const MainNavigation()),
-            );
-          }
+
+          _navigateByRole(role);
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['error'] ?? "อีเมลหรือรหัสผ่านไม่ถูกต้อง", style: GoogleFonts.prompt()),
+              content: Text(
+                result['error'] ?? "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+                style: GoogleFonts.prompt(),
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -86,23 +85,114 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้: $error", style: GoogleFonts.prompt()),
+            content: Text(
+              "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้: $error",
+              style: GoogleFonts.prompt(),
+            ),
             backgroundColor: Colors.red,
           ),
         );
       } finally {
-        setState(() {
-          isLoading = false;
-        });
+        setState(() => isLoading = false);
       }
     }
   }
+
+  // ==========================================
+  // ✅ ฟังก์ชัน Google Login
+  // ==========================================
+  Future<void> _loginWithGoogle() async {
+    setState(() => isGoogleLoading = true);
+    try {
+      // 1. เปิดหน้าต่าง Google Sign-In
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        // ผู้ใช้กด cancel
+        setState(() => isGoogleLoading = false);
+        return;
+      }
+
+      // 2. ดึง Authentication Token จาก Google
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final String? idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        _showSnackBar("ไม่สามารถดึง Token จาก Google ได้", Colors.red);
+        setState(() => isGoogleLoading = false);
+        return;
+      }
+
+      // 3. ส่ง idToken ไปให้ Node.js ตรวจสอบ
+      final config = await Configuration.getConfig();
+      final apiEndpoint = config['apiEndpoint'];
+
+      final response = await http.post(
+        Uri.parse("$apiEndpoint/google-login"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"idToken": idToken}),
+      );
+
+      final result = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        final String token = result['token'];
+        final String role = result['user']?['u_role'] ?? 'user';
+
+        // 4. บันทึก token และ role ลงเครื่อง
+        await AuthService.saveLoginData(token, role);
+
+        if (!mounted) return;
+        _showSnackBar("เข้าสู่ระบบด้วย Google สำเร็จ", Colors.green);
+        _navigateByRole(role);
+      } else {
+        if (!mounted) return;
+        _showSnackBar(
+          result['error'] ?? "Google Login ล้มเหลว",
+          Colors.red,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar("เกิดข้อผิดพลาด: $e", Colors.red);
+    } finally {
+      if (mounted) setState(() => isGoogleLoading = false);
+    }
+  }
+
+  // ==========================================
+  // Helper functions
+  // ==========================================
+  void _navigateByRole(String role) {
+    if (role == 'admin') {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const AdminMainNavigation()),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const MainNavigation()),
+      );
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.prompt()),
+        backgroundColor: color,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,21 +219,29 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: GoogleFonts.prompt(fontSize: 16, color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 40),
+
+                // ช่องกรอก Username
                 _buildTextField(
                   "อีเมล",
                   Icons.email,
                   controller: _emailController,
-                  validator: (value) => value!.isEmpty ? 'กรุณากรอกอีเมล' : null,
+                  validator: (value) =>
+                      value!.isEmpty ? 'กรุณากรอกอีเมล' : null,
                 ),
                 const SizedBox(height: 20),
+
+                // ช่องกรอก Password
                 _buildTextField(
                   "รหัสผ่าน",
                   Icons.lock,
                   isPassword: true,
                   controller: _passwordController,
-                  validator: (value) => value!.isEmpty ? 'กรุณากรอกรหัสผ่าน' : null,
+                  validator: (value) =>
+                      value!.isEmpty ? 'กรุณากรอกรหัสผ่าน' : null,
                 ),
                 const SizedBox(height: 30),
+
+                // ปุ่ม Login ปกติ
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -160,24 +258,104 @@ class _LoginScreenState extends State<LoginScreen> {
                         : Text(
                             "เข้าสู่ระบบ",
                             style: GoogleFonts.prompt(
-                                fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                              fontSize: 18,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ✅ Divider "หรือ"
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        "หรือ",
+                        style: GoogleFonts.prompt(
+                          color: Colors.grey[500],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey[300])),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // ✅ ปุ่ม Google Login
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.grey[300]!),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: isGoogleLoading ? null : _loginWithGoogle,
+                    child: isGoogleLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF1976D2),
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Google logo (ใช้ icon แทนรูป)
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.g_mobiledata,
+                                  color: Color(0xFFEA4335),
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                "เข้าสู่ระบบด้วย Google",
+                                style: GoogleFonts.prompt(
+                                  fontSize: 16,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                   ),
                 ),
                 const SizedBox(height: 20),
 
+                // ลิงก์สมัครสมาชิก
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       "ยังไม่มีบัญชีใช่ไหม? ",
-                      style: GoogleFonts.prompt(color: Colors.grey[600], fontSize: 15),
+                      style: GoogleFonts.prompt(
+                        color: Colors.grey[600],
+                        fontSize: 15,
+                      ),
                     ),
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterScreen(),
+                          ),
                         );
                       },
                       child: Text(
@@ -198,6 +376,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
   Widget _buildTextField(
     String hint,
     IconData icon, {
@@ -216,8 +395,9 @@ class _LoginScreenState extends State<LoginScreen> {
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
-                    isPasswordHidden ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.grey),
+                  isPasswordHidden ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.grey,
+                ),
                 onPressed: () =>
                     setState(() => isPasswordHidden = !isPasswordHidden),
               )
