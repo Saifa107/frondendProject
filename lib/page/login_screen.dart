@@ -28,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ✅ สร้าง GoogleSignIn instance
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: "221645289676-rohva1u8b4ntq99373c67d6peedi3rcp.apps.googleusercontent.com",
+    serverClientId: "221645289676-63qduao82d6u8j2e9e8622lrm653oiva.apps.googleusercontent.com",
     scopes: ['email', 'profile'],
   );
 
