@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 // Import ส่วนของ Config และ Model
 import '../config/config.dart';
@@ -15,7 +16,6 @@ import '../service/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -26,14 +26,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool isPasswordHidden = true;
-  bool isLoading = false; 
+  bool isLoading = false;
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
-        isLoading = true; 
+        isLoading = true;
       });
-
       try {
         final config = await Configuration.getConfig();
         final apiEndpoint = config['apiEndpoint'];
@@ -41,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
         UserLoginPostReq reqData = UserLoginPostReq(
           username: _emailController.text.trim(),
           password: _passwordController.text.trim(),
-        ); 
+        );
 
         final response = await http.post(
           Uri.parse("$apiEndpoint/login"),
@@ -50,15 +49,12 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
         final result = jsonDecode(response.body);
-
         if (response.statusCode == 200) {
-
           final String token = result['token'];
           final String role = result['user']?['u_role'] ?? 'user';
 
           //  เรียก Service ให้บันทึกข้อมูลลงเครื่องมือถือ
           await AuthService.saveLoginData(token, role);
-
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -66,7 +62,6 @@ class _LoginScreenState extends State<LoginScreen> {
               backgroundColor: Colors.green,
             ),
           );
-
           if (role == 'admin') {
             Navigator.pushReplacement(
               context,
@@ -88,7 +83,6 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } catch (error) {
-
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -98,19 +92,17 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       } finally {
         setState(() {
-          isLoading = false; 
+          isLoading = false;
         });
       }
     }
   }
-
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
           child: Form(
-            key: _formKey, 
+            key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -128,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: GoogleFonts.prompt(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF0D47A1), 
+                    color: const Color(0xFF0D47A1),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -137,7 +129,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: GoogleFonts.prompt(fontSize: 16, color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 40),
-
                 _buildTextField(
                   "อีเมล",
                   Icons.email,
@@ -153,18 +144,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: (value) => value!.isEmpty ? 'กรุณากรอกรหัสผ่าน' : null,
                 ),
                 const SizedBox(height: 30),
-
                 SizedBox(
                   width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1976D2), 
+                      backgroundColor: const Color(0xFF1976D2),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: isLoading ? null : _login, 
+                    onPressed: isLoading ? null : _login,
                     child: isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
@@ -208,7 +198,6 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-
   Widget _buildTextField(
     String hint,
     IconData icon, {
@@ -216,7 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required TextEditingController controller,
     String? Function(String?)? validator,
   }) {
-    return TextFormField( 
+    return TextFormField(
       controller: controller,
       obscureText: isPassword && isPasswordHidden,
       validator: validator,
